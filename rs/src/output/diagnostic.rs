@@ -171,6 +171,9 @@ pub enum Classification {
     #[strum(props(Description = "illegal glob"))]
     IllegalGlob = 5,
 
+    #[strum(props(Description = "internal error"))]
+    InternalError = 6,
+
     // Protobuf-related diagnostics (group 1).
     #[strum(props(HiddenDescription = "protobuf-related diagnostic"))]
     Proto = 1000,
@@ -187,7 +190,7 @@ pub enum Classification {
     #[strum(props(Description = "missing protobuf \"any\" declaration"))]
     ProtoMissingAnyDeclaration = 1006,
 
-    // YAML-reated diagnostics (group 2).
+    // YAML-related diagnostics (group 2).
     #[strum(props(HiddenDescription = "YAML-related diagnostic"))]
     Yaml = 2000,
 
@@ -256,6 +259,12 @@ pub enum Classification {
     #[strum(props(Description = "mismatched nullability"))]
     TypeMismatchedNullability = 4008,
 
+    #[strum(props(Description = "underconstrained type expression"))]
+    TypeUnderconstrained = 4009,
+
+    #[strum(props(Description = "overconstrained type expression"))]
+    TypeOverconstrained = 4010,
+
     // Relation-related diagnostics (group 5).
     #[strum(props(HiddenDescription = "relation-related diagnostics"))]
     Relation = 5000,
@@ -311,6 +320,19 @@ pub enum Classification {
 
     #[strum(props(Description = "redundant field"))]
     RedundantField = 7007,
+
+    // Function-related diagnostics (group 8).
+    #[strum(props(HiddenDescription = "expression-related diagnostics"))]
+    Function = 8000,
+
+    #[strum(props(Description = "failed to deduce function return type"))]
+    FunctionReturnTypeDeductionFailed = 8001,
+
+    #[strum(props(Description = "function overconstrained"))]
+    FunctionOverconstrained = 8002,
+
+    #[strum(props(Description = "recursive type expression"))]
+    FunctionRecursiveTypeExpression = 8003,
 }
 
 impl Default for Classification {

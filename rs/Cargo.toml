@@ -41,6 +41,9 @@ serde_json = "1"
 # being useful elsewhere too).
 regex = "1.5"
 
+# Used for parsing types and type expressions in YAML files.
+nom = "7.1"
+
 # Used for checking URI syntax.
 uriparse = "0.6"
 

@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 mod function_decls;
 mod type_decls;
+mod type_expressions;
 mod type_variation_decls;
 mod yaml;
 
