@@ -26,7 +26,23 @@ pub struct Data {
     complete: bool,
 }
 
+impl Default for Data {
+    /// Returns a new, empty data block that has not yet been constrained.
+    fn default() -> Self {
+        Self {
+            aliases: vec![],
+            values: metavalues::set::Set::full(),
+            complete: false
+        }
+    }
+}
+
 impl Data {
+    /// Adds an alias to this data block.
+    pub fn push_alias(&mut self, alias: &metavars::alias::Reference) {
+        self.aliases.push(Rc::downgrade(alias));
+    }
+
     /// Returns a suitable Err for when a constraint is added to a complete
     /// variable.
     fn check_can_be_constrained(&self) -> diagnostic::Result<()> {

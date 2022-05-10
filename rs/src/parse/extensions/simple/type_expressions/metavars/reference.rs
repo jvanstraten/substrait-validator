@@ -3,6 +3,7 @@ use crate::parse::extensions::simple::type_expressions::context;
 use crate::parse::extensions::simple::type_expressions::metavalues;
 use crate::parse::extensions::simple::type_expressions::metavars;
 use std::rc::Rc;
+use std::cell::RefCell;
 
 /// A reference to a metavariable.
 #[derive(Clone, Debug)]
@@ -18,15 +19,17 @@ pub struct Reference {
 
     /// Reference to the alias block for this metavariable. Initialized via
     /// bind().
-    alias: Option<metavars::alias::Reference>,
+    alias: RefCell<Option<metavars::alias::Reference>>,
 }
 
 impl std::fmt::Display for Reference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Try to print the description from the alias block.
-        if let Some(alias) = &self.alias {
-            if let Ok(alias) = alias.try_borrow() {
-                return write!(f, "{alias}");
+        if let Ok(alias) = self.alias.try_borrow() {
+            if let Some(alias) = alias.as_ref() {
+                if let Ok(alias) = alias.try_borrow() {
+                    return write!(f, "{alias}");
+                }
             }
         }
 
@@ -57,7 +60,7 @@ impl Reference {
         Reference {
             key: metavars::key::Key::Generic(key),
             description: Some(Rc::new(name)),
-            alias: None,
+            alias: RefCell::default(),
         }
     }
 
@@ -67,7 +70,7 @@ impl Reference {
         Reference {
             key: metavars::key::Key::Inferred(metavars::key::Unique::default()),
             description: description.map(|x| Rc::new(x.to_string())),
-            alias: None,
+            alias: RefCell::default(),
         }
     }
 
@@ -77,7 +80,7 @@ impl Reference {
         Reference {
             key: metavars::key::Key::FunctionParameterType(index),
             description: None,
-            alias: None,
+            alias: RefCell::default(),
         }
     }
 
@@ -87,59 +90,39 @@ impl Reference {
         Reference {
             key: metavars::key::Key::FunctionReturnType,
             description: None,
-            alias: None,
+            alias: RefCell::default(),
         }
     }
 
     /// Bind this metavariable reference to the given context.
-    pub fn bind(&self, context: &mut context::solver::Solver) {
+    pub fn bind(&self, context: &mut context::solver::Solver) -> diagnostic::Result<()> {
         // Construct alias and data blocks if they don't already exist in the
         // context, and save the correct reference in self.alias.
-
-        // Notes to post-PTO self: transpose Option(RefCell(RefCell(data))) to
-        // RefCell(Option(RefCell(data))) to make &self work; interior
-        // mutability is needed here. Alternatively
-        // RefCell(Option(RefCell(RefCell(data)))) but it's super messy with
-        // two refcells already.
-        //
-        // The whole solve process should be something like
-        //  - parse function stuff into constraint list thingy, and store those
-        //    constraints with the function definition;
-        //  - for a function call:
-        //     - Clone the constraint list.
-        //     - Add additional constraints for the function parameters.
-        //     - Bind everything to a solver context to instantiate the data
-        //       blocks for all metavars, with all metavars initially set to
-        //       the set of all values, and marked as dirty.
-        //     - Start processing constraints in a loop. A constraint should
-        //       remember which child constraints it has imposed already; for
-        //       example, for a function, initially this would be nothing, then
-        //       in the first pass it would (at least) impose metatype
-        //       constraints based on the available prototypes, and only once
-        //       all parameters are fully resolved would it constrain the
-        //       return metavar to the computed value.
-        //     - When none of the constraints have anything more to add to the
-        //       system, solving is complete.
-        //     - Check the return type metavar at this point: if it has a
-        //       single value solving is complete, otherwise it is over- or
-        //       underconstrained. For the underconstrained case, check if the
-        //       specified return type is in the set of possible values; if so
-        //       emit a warning, otherwise emit an error.
-        //     - Errors may occur while solving, particularly for recursive
-        //       type patterns and such. Just stop solving at that point and
-        //       return an error (or maybe a warning depending on the cause?).
-        //  - Also solve for a function definition, but only check for an
-        //    overconstrained return type there.
-
-        todo!()
+        let mut binding = self.alias.try_borrow_mut().map_err(|_| cause!(InternalError, "concurrency error"))?;
+        if binding.replace(context.resolve(&self.key, || self.to_string())).is_some() {
+            Err(cause!(
+                InternalError,
+                "attempt to dereference unbound reference to {} in function constraint solver",
+                self.key
+            ))
+        } else {
+            Ok(())
+        }
     }
 
-    /// Returns the pointer to the alias block.
-    fn alias_ptr(&self) -> diagnostic::Result<&metavars::alias::Reference> {
-        self.alias.as_ref().ok_or_else(|| {
+    /// Returns a reference to the binding.
+    pub fn binding(&self) -> diagnostic::Result<std::cell::Ref<Option<metavars::alias::Reference>>> {
+        self.alias.try_borrow().map_err(|_| cause!(InternalError, "concurrency error"))
+    }
+
+    /// Given a reference to the binding, returns the pointer to the alias
+    /// block.
+    fn alias_ptr<'a, 'b>(&'a self, binding: &'b std::cell::Ref<Option<metavars::alias::Reference>>) -> diagnostic::Result<&'b metavars::alias::Reference> {
+        binding.as_ref().ok_or_else(|| {
             cause!(
                 InternalError,
-                "attempt to dereference unbound reference in function constraint solver"
+                "attempt to dereference unbound reference to {} in function constraint solver",
+                self.key
             )
         })
     }
@@ -159,9 +142,10 @@ impl Reference {
         })
     }
 
-    /// Returns a (mutable) reference to the alias block.
-    pub fn alias(&self) -> diagnostic::Result<std::cell::RefMut<metavars::alias::Alias>> {
-        self.alias_ref(self.alias_ptr()?)
+    /// Given a reference to the binding, returns a (mutable) reference to the
+    /// alias block.
+    pub fn alias<'a, 'b>(&'a self, binding: &'b std::cell::Ref<Option<metavars::alias::Reference>>) -> diagnostic::Result<std::cell::RefMut<'b, metavars::alias::Alias>> {
+        self.alias_ref(self.alias_ptr(binding)?)
     }
 
     /// Given a reference to the alias block, returns a (mutable) reference
@@ -184,8 +168,10 @@ impl Reference {
     /// values are removed from the perspective of either reference. If no
     /// more values are possible, an error is returned.
     pub fn merge_with(&self, other: &Reference) -> diagnostic::Result<bool> {
-        let a_alias = self.alias_ptr()?;
-        let b_alias = other.alias_ptr()?;
+        let a_binding = self.binding()?;
+        let b_binding = other.binding()?;
+        let a_alias = self.alias_ptr(&a_binding)?;
+        let b_alias = other.alias_ptr(&b_binding)?;
 
         // If the references are equivalent, their values are already equal by
         // definition.
@@ -239,19 +225,17 @@ impl Reference {
     /// constraint reduced the number of possible values. If no more values are
     /// possible, an error is returned.
     pub fn constrain(&self, constraint: &metavalues::set::Set) -> diagnostic::Result<bool> {
-        let alias = self
-            .alias
-            .as_ref()
-            .expect("attempt to constrain unbound metavariable reference")
-            .borrow();
-        let mut data = alias.data.borrow_mut();
+        let binding = self.binding()?;
+        let alias = self.alias(&binding)?;
+        let mut data = Self::data(&alias)?;
         data.constrain(constraint)
     }
 
     /// If the set of possible values for this metavariable has been reduced to
     /// only one possibility, return it. Otherwise returns None.
     pub fn value(&self) -> diagnostic::Result<Option<metavalues::value::Value>> {
-        let alias = self.alias()?;
+        let binding = self.binding()?;
+        let alias = self.alias(&binding)?;
         let data = Self::data(&alias)?;
         data.value()
     }
@@ -259,7 +243,8 @@ impl Reference {
     /// Returns whether this metavalue still has the given value as a
     /// possibility.
     pub fn matches(&self, value: &metavalues::value::Value) -> diagnostic::Result<bool> {
-        if let Some(alias) = &self.alias {
+        let binding = self.binding()?;
+        if let Some(alias) = binding.as_ref() {
             let alias = self.alias_ref(alias)?;
             let data = Self::data(&alias)?;
             data.matches(value)
@@ -271,8 +256,10 @@ impl Reference {
     /// Returns true when both references refer to the same data block due to
     /// an equality constraint or due to being the same reference.
     pub fn aliases(&self, other: &Reference) -> diagnostic::Result<bool> {
-        let a_alias = self.alias_ptr()?;
-        let b_alias = other.alias_ptr()?;
+        let a_binding = self.binding()?;
+        let b_binding = other.binding()?;
+        let a_alias = self.alias_ptr(&a_binding)?;
+        let b_alias = other.alias_ptr(&b_binding)?;
         if Rc::ptr_eq(&a_alias, &b_alias) {
             return Ok(true);
         }
@@ -320,16 +307,10 @@ impl Reference {
             return Ok(Some(true));
         }
 
-        let a_alias = self
-            .alias
-            .as_ref()
-            .expect("attempt to constrain unbound metavariable reference")
-            .borrow();
-        let b_alias = other
-            .alias
-            .as_ref()
-            .expect("attempt to constrain unbound metavariable reference")
-            .borrow();
+        let a_binding = self.binding()?;
+        let b_binding = other.binding()?;
+        let a_alias = self.alias(&a_binding)?;
+        let b_alias = other.alias(&b_binding)?;
         let a_data = a_alias.data.borrow();
         let b_data = b_alias.data.borrow();
         a_data.covers(&b_data)
@@ -343,16 +324,10 @@ impl Reference {
             return Ok(true);
         }
 
-        let a_alias = self
-            .alias
-            .as_ref()
-            .expect("attempt to constrain unbound metavariable reference")
-            .borrow();
-        let b_alias = other
-            .alias
-            .as_ref()
-            .expect("attempt to constrain unbound metavariable reference")
-            .borrow();
+        let a_binding = self.binding()?;
+        let b_binding = other.binding()?;
+        let a_alias = self.alias(&a_binding)?;
+        let b_alias = other.alias(&b_binding)?;
         let a_data = a_alias.data.borrow();
         let b_data = b_alias.data.borrow();
         a_data.intersects_with(&b_data)

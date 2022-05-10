@@ -26,13 +26,13 @@ where
                 first = false;
             } else {
                 if !contained {
-                    write!(f, ", ");
+                    write!(f, ", ")?;
                 }
                 flip.fmt(f)?;
             }
             contained = !contained;
             if contained {
-                write!(f, "..");
+                write!(f, "..")?;
             }
         }
         Ok(())

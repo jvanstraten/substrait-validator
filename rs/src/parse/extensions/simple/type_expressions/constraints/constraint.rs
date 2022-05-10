@@ -1,3 +1,4 @@
+use crate::output::diagnostic;
 use crate::parse::extensions::simple::type_expressions::constraints;
 use crate::parse::extensions::simple::type_expressions::context;
 use crate::parse::extensions::simple::type_expressions::metavalues;
@@ -44,19 +45,20 @@ pub struct Constraint {
 impl Constraint {
     /// Bind all metavariable references in this constraint to the given
     /// context.
-    pub fn bind(&mut self, context: &mut context::solver::Solver) {
-        match &mut self.data {
-            ConstraintType::Within(x) => x.bind(context),
+    pub fn bind(&self, context: &mut context::solver::Solver) -> diagnostic::Result<()> {
+        match &self.data {
+            ConstraintType::Within(x) => x.bind(context)?,
             ConstraintType::Function(_, x) => {
-                for x in x.iter_mut() {
-                    x.bind(context);
+                for x in x.iter() {
+                    x.bind(context)?;
                 }
             }
             ConstraintType::OneOf(x) => {
-                for x in x.iter_mut() {
-                    x.bind(context);
+                for x in x.iter() {
+                    x.bind(context)?;
                 }
             }
         }
+        Ok(())
     }
 }

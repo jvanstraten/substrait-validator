@@ -162,7 +162,7 @@ impl Integers {
 /// Struct<[T, S]> would work, though, because it reduces to Struct<_> and
 /// _ in [T, S]
 #[derive(Clone, Debug)]
-struct DistinctPattern(metavalues::data_type::Pattern);
+pub struct DistinctPattern(metavalues::data_type::Pattern);
 
 impl std::ops::Deref for DistinctPattern {
     type Target = metavalues::data_type::Pattern;
@@ -235,14 +235,15 @@ impl DataTypes {
     }
 
     /// Bind all metavariable references in this set to the given context.
-    pub fn bind(&self, context: &mut context::solver::Solver) {
+    pub fn bind(&self, context: &mut context::solver::Solver) -> diagnostic::Result<()> {
         if let DataTypes::Some(patterns) = self {
             for patterns in patterns.values() {
                 for pattern in patterns.iter() {
-                    pattern.bind(context);
+                    pattern.bind(context)?;
                 }
             }
         }
+        Ok(())
     }
 
     /// Adds the given pattern to the set. If the resulting set is not
@@ -530,8 +531,8 @@ impl Set {
     }
 
     /// Bind all metavariable references in this set to the given context.
-    pub fn bind(&mut self, context: &mut context::solver::Solver) {
-        self.data_types.bind(context);
+    pub fn bind(&self, context: &mut context::solver::Solver) -> diagnostic::Result<()> {
+        self.data_types.bind(context)
     }
 
     /// Remove all values in the set that do not satisfy the given constraint.

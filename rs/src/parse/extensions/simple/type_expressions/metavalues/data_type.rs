@@ -114,17 +114,18 @@ impl std::fmt::Display for Pattern {
 
 impl Pattern {
     /// Bind all metavariable references in this pattern to the given context.
-    pub fn bind(&self, context: &mut context::solver::Solver) {
+    pub fn bind(&self, context: &mut context::solver::Solver) -> diagnostic::Result<()> {
         if let Some(nullable) = &self.nullable {
-            nullable.bind(context);
+            nullable.bind(context)?;
         }
         if let Some(parameters) = &self.parameters {
             for parameter in parameters.iter() {
                 if let Some(parameter) = parameter {
-                    parameter.value.bind(context);
+                    parameter.value.bind(context)?;
                 }
             }
         }
+        Ok(())
     }
 
     /// Returns whether the given concrete type matches this pattern. Parameter
