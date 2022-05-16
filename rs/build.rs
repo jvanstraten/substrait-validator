@@ -99,6 +99,32 @@ fn main() -> Result<()> {
                     .expect("failed to strip prefix"),
             )?;
         }
+
+        // Determine Substrait submodule version and write it to a resource
+        // file.
+        let substrait_version = std::process::Command::new("git")
+            .args(["describe", "--tags"])
+            .current_dir(&substrait_git_dir)
+            .output()
+            .expect("failed to get substrait submodule version");
+        if !substrait_version.status.success() {
+            panic!("failed to get substrait submodule version");
+        }
+        let mut substrait_version = String::from_utf8_lossy(&substrait_version.stdout)
+            .trim()
+            .to_string();
+        let dirty = !std::process::Command::new("git")
+            .args(["diff", "--quiet"])
+            .current_dir(&substrait_git_dir)
+            .status()
+            .expect("failed to get substrait submodule dirty flag")
+            .success();
+        if dirty {
+            substrait_version += "+dirty";
+        }
+        let substrait_version: &str = &substrait_version;
+        fs::write(resource_dir.join("substrait-version"), substrait_version)
+            .expect("failed to write substrait submodule version file");
     }
 
     // Find all protobuf files in our resource directory. We just synchronized

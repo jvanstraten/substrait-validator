@@ -154,3 +154,8 @@ def test_resolver_callback():
             },
             config,
         )
+
+
+def test_version():
+    """Tests whether Substrait version retrieval works."""
+    assert sv.substrait_version().startswith("v")
