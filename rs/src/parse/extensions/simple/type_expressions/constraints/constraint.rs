@@ -16,10 +16,13 @@ pub enum ConstraintType {
     /// combinations of data type patterns.
     Within(metavalues::set::Set),
 
-    /// The value must equal the return value of the given function. Functions
-    /// are only evaluated once all their arguments have been reduced to a
-    /// single value, but metatype constraints can be placed on the arguments
-    /// and the result/constrained metavar and the applicable overload(s).
+    /// The value must equal the return value of the given function. A function
+    /// constraint does the following things:
+    ///  - once the overload is known, metatype constraints are imposed on the
+    ///    argument variables and return variable;
+    ///  - once all argument variables are resolved to a single value or (in
+    ///    case of covers()) are marked complete, the return variable is
+    ///    constrained to the result of the function.
     Function(
         constraints::function::Function,
         Vec<metavars::reference::Reference>,
@@ -27,7 +30,16 @@ pub enum ConstraintType {
 
     /// The value must equal the values of one of the given variables. This is
     /// also used for describing equality constraints, in which case the vector
-    /// only has one entry.
+    /// only has one entry. A oneof constraint can be applied in three
+    /// different ways:
+    ///  - if the vector only has one entry, an alias-based equality constraint
+    ///    is imposed between the variables;
+    ///  - if the options for the target variable no longer intersect with any
+    ///    of the options for any of the oneof entries, the target variable is
+    ///    marked as overconstrained;
+    ///  - when all the oneof entries are marked as complete, the target
+    ///    variable is constrained by the smallest representable superset of
+    ///    all possible values of the oneof entries.
     OneOf(Vec<metavars::reference::Reference>),
 }
 
@@ -45,16 +57,16 @@ pub struct Constraint {
 impl Constraint {
     /// Bind all metavariable references in this constraint to the given
     /// context.
-    pub fn bind(&self, context: &mut context::solver::Solver) -> diagnostic::Result<()> {
-        match &self.data {
+    pub fn bind(&mut self, context: &mut context::solver::Solver) -> diagnostic::Result<()> {
+        match &mut self.data {
             ConstraintType::Within(x) => x.bind(context)?,
             ConstraintType::Function(_, x) => {
-                for x in x.iter() {
+                for x in x.iter_mut() {
                     x.bind(context)?;
                 }
             }
             ConstraintType::OneOf(x) => {
-                for x in x.iter() {
+                for x in x.iter_mut() {
                     x.bind(context)?;
                 }
             }

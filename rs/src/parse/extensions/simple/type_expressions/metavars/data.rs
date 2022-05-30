@@ -32,7 +32,7 @@ impl Default for Data {
         Self {
             aliases: vec![],
             values: metavalues::set::Set::full(),
-            complete: false
+            complete: false,
         }
     }
 }

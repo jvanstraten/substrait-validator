@@ -172,6 +172,12 @@ impl std::ops::Deref for DistinctPattern {
     }
 }
 
+impl std::ops::DerefMut for DistinctPattern {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl PartialEq for DistinctPattern {
     fn eq(&self, other: &Self) -> bool {
         if self.class != other.class {
@@ -235,12 +241,14 @@ impl DataTypes {
     }
 
     /// Bind all metavariable references in this set to the given context.
-    pub fn bind(&self, context: &mut context::solver::Solver) -> diagnostic::Result<()> {
+    pub fn bind(&mut self, context: &mut context::solver::Solver) -> diagnostic::Result<()> {
         if let DataTypes::Some(patterns) = self {
-            for patterns in patterns.values() {
-                for pattern in patterns.iter() {
+            for patterns in patterns.values_mut() {
+                let mut pattern_vec = patterns.drain().collect::<Vec<_>>();
+                for pattern in pattern_vec.iter_mut() {
                     pattern.bind(context)?;
                 }
+                patterns.extend(pattern_vec.into_iter());
             }
         }
         Ok(())
@@ -531,7 +539,7 @@ impl Set {
     }
 
     /// Bind all metavariable references in this set to the given context.
-    pub fn bind(&self, context: &mut context::solver::Solver) -> diagnostic::Result<()> {
+    pub fn bind(&mut self, context: &mut context::solver::Solver) -> diagnostic::Result<()> {
         self.data_types.bind(context)
     }
 
